@@ -112,6 +112,34 @@ def _apply_owned_event_properties(properties: dict[str, Any], product: str, team
 # to the same trace UUID across runs and processes.
 _TRACE_ID_NAMESPACE = UUID("8d4f6b7e-6a3e-4f3a-9f3b-3b6f4d2e8a1a")
 
+_LITELLM_INTERNAL_METADATA_KEYS = frozenset({
+    "usage_object",
+    "model_group",
+    "endpoint",
+    "user_api_key",
+    "user_api_key_hash",
+    "user_api_key_alias",
+    "user_api_key_team_id",
+    "user_api_key_org_id",
+    "user_api_key_user_id",
+    "user_api_key_end_user_id",
+    "user_id",
+    "headers",
+    "authorization",
+    "auth",
+    "api_key",
+})
+
+
+def _merge_custom_metadata(properties: dict[str, Any], metadata: Any) -> None:
+    if not isinstance(metadata, dict):
+        return
+    for key, value in metadata.items():
+        if not isinstance(key, str):
+            continue
+        if key not in _LITELLM_INTERNAL_METADATA_KEYS and not key.startswith("$ai_"):
+            properties.setdefault(key, _replace_binary_content(value))
+
 
 def _normalize_trace_id(raw: Any) -> str:
     """Normalize an incoming trace identifier into a UUID string.
@@ -274,6 +302,7 @@ class PostHogCallback(InstrumentedCallback):
             for flag_key, variant in posthog_flags.items():
                 properties[f"$feature/{flag_key}"] = variant
 
+        _merge_custom_metadata(properties, metadata)
         _apply_owned_event_properties(properties, product, team_id)
 
         response_cost = standard_logging_object.get("response_cost")
@@ -362,6 +391,7 @@ class PostHogCallback(InstrumentedCallback):
             for flag_key, variant in posthog_flags.items():
                 properties[f"$feature/{flag_key}"] = variant
 
+        _merge_custom_metadata(properties, metadata)
         _apply_owned_event_properties(properties, product, team_id)
 
         capture_kwargs: dict[str, Any] = {
